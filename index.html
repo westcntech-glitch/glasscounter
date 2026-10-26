@@ -89,9 +89,11 @@ button:disabled{opacity:.5}
   <label for="model">モデル名</label>
   <input id="model" list="models">
   <datalist id="models">
-    <option value="gemini-2.5-flash-lite"><option value="gemini-2.5-flash"><option value="gemini-3-flash-preview">
+    <option value="gemini-3.5-flash-lite"><option value="gemini-3.1-flash-lite"><option value="gemini-3.8-flash"><option value="gemini-3.6-flash">
   </datalist>
-  <p class="hint">無料枠で使えるモデルは変わることがあります。エラーが出たら、AI Studioの料金ページで確認して入力し直してください。精度はモデルごとに試して比べてください。</p>
+  <button id="lm" class="s" style="margin-top:8px">使えるモデルを確認</button>
+  <p id="lmout" class="hint" style="word-break:break-all"></p>
+  <p class="hint">無料枠で使えるモデルは変わることがあります。モデルごとに無料の回数枠が別なので、精度と回数を見比べて選んでください。</p>
   <label for="max">送信する画像の長辺（px）</label>
   <input id="max" type="number" inputmode="numeric" min="600" max="4000" step="100">
   <button id="sv" class="p" style="margin-top:16px">設定を保存</button>
@@ -118,11 +120,20 @@ const tx=async(m,f)=>{const db=await dbp;return new Promise((ok,ng)=>{const t=db
 
 /* settings */
 $('#key').value=LS('key')||'';
-$('#model').value=LS('model')||'gemini-2.5-flash-lite';
+$('#model').value=LS('model2')||'gemini-3.5-flash-lite';
 $('#max').value=LS('max')||'2000';
 ['proc','worker'].forEach(id=>$('#'+id).value=LS(id)||'');
-$('#sv').onclick=()=>{LS('key',$('#key').value.trim());LS('model',$('#model').value.trim());LS('max',$('#max').value);$('#svmsg').textContent='保存しました。'};
+$('#sv').onclick=()=>{LS('key',$('#key').value.trim());LS('model2',$('#model').value.trim());LS('max',$('#max').value);$('#svmsg').textContent='保存しました。'};
 
+$('#lm').onclick=async()=>{
+  const k=$('#key').value.trim();if(!k){$('#lmout').textContent='先にAPIキーを入力してください。';return}
+  $('#lmout').textContent='確認中…';
+  try{const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200',{headers:{'x-goog-api-key':k}});const j=await r.json();
+    if(!r.ok)throw new Error((j.error&&j.error.message)||r.status);
+    const m=(j.models||[]).filter(x=>(x.supportedGenerationMethods||[]).includes('generateContent')&&/^models\/gemini-[\d.]+-flash/.test(x.name)&&!/image|tts|live|audio|omni|robotics|computer/.test(x.name)).map(x=>x.name.replace('models/',''));
+    $('#lmout').textContent=m.length?'使える候補: '+m.join(' / '):'候補が見つかりませんでした。'}
+  catch(x){$('#lmout').textContent='取得できませんでした: '+x.message}
+};
 /* image */
 let blob=null;
 const shrink=async(file,max)=>{
@@ -142,7 +153,7 @@ const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.sp
 
 /* count */
 $('#go').onclick=async()=>{
-  const key=LS('key'),model=LS('model')||'gemini-2.5-flash-lite';
+  const key=LS('key'),model=LS('model2')||'gemini-3.5-flash-lite';
   if(!key){$('#err').textContent='先に「設定」でAPIキーを入力してください。';return}
   $('#go').disabled=true;$('#go').textContent='数えています…';$('#err').textContent='';
   try{
@@ -152,7 +163,7 @@ $('#go').onclick=async()=>{
         generationConfig:{temperature:0,responseMimeType:'application/json',
           responseSchema:{type:'OBJECT',properties:{count:{type:'INTEGER'},note:{type:'STRING'}},required:['count','note']}}})});
     const j=await r.json();
-    if(!r.ok){const m=(j.error&&j.error.message)||'';throw new Error(r.status===429?'無料枠の回数制限に達しました。しばらく待ってからやり直してください。':r.status===400||r.status===403?'APIキーまたはモデル名を確認してください。\n'+m:'AIとの通信に失敗しました（'+r.status+'）。\n'+m)}
+    if(!r.ok){const m=(j.error&&j.error.message)||'';throw new Error(r.status===404?'モデル名が使えません。「設定」の「使えるモデルを確認」で表示された名前を入力してください。':r.status===429?'無料枠の回数制限に達しました。しばらく待ってからやり直してください。':r.status===400||r.status===403?'APIキーまたはモデル名を確認してください。\n'+m:'AIとの通信に失敗しました（'+r.status+'）。\n'+m)}
     const o=JSON.parse(j.candidates[0].content.parts[0].text);
     $('#ai').textContent=o.count;$('#cnt').value=o.count;$('#note').textContent=o.note||'';
     $('#res').hidden=false;$('#res').scrollIntoView({behavior:'smooth'});
