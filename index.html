@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小口カウント</title>
+<style>
+:root{--ink:#12302b;--glass:#2f8f7a;--pale:#e8f0ed;--paper:#f7f9f8;--line:#cddad6;--pink:#e4569b;--warn:#b3261e}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:16px/1.6 "Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif;color:var(--ink);background:var(--paper)}
+header{background:var(--ink);color:#fff;padding:14px 16px 0;position:relative;overflow:hidden}
+header::after{content:"";position:absolute;right:0;top:0;bottom:0;width:38%;background:repeating-linear-gradient(180deg,rgba(125,205,185,.55) 0 2px,transparent 2px 7px);-webkit-mask:linear-gradient(90deg,transparent,#000);mask:linear-gradient(90deg,transparent,#000)}
+h1{margin:0 0 10px;font-size:20px;letter-spacing:.04em;position:relative;z-index:1}
+h1 i{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--pink);margin-left:8px}
+nav{display:flex;gap:4px;position:relative;z-index:1}
+nav button{flex:1;max-width:120px;border:0;background:transparent;color:#bcd6cf;font:inherit;padding:8px 0;border-bottom:3px solid transparent;cursor:pointer}
+nav button[aria-selected=true]{color:#fff;border-color:var(--pink)}
+main{max-width:560px;margin:0 auto;padding:16px}
+section[hidden]{display:none}
+label{display:block;font-size:14px;margin:12px 0 4px}
+input,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+button.p,label.p{display:block;width:100%;text-align:center;border:0;border-radius:6px;padding:13px;font:inherit;font-weight:600;background:var(--glass);color:#fff;cursor:pointer;margin:0}
+button.s{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;padding:8px 12px;font:inherit;cursor:pointer}
+button:disabled{opacity:.5}
+:focus-visible{outline:3px solid var(--pink);outline-offset:2px}
+#prev{display:none;width:100%;border-radius:6px;margin-top:12px;background:#000;max-height:60vh;object-fit:contain}
+.res{margin-top:14px;padding:14px;background:var(--pale);border-left:5px solid var(--glass);border-radius:0 6px 6px 0}
+.res[hidden]{display:none}
+.big{font-size:56px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
+.big small{font-size:18px;font-weight:400;margin-left:4px}
+#note{margin:6px 0 0;font-size:14px}
+.msg{margin-top:10px;font-size:14px;color:var(--warn);white-space:pre-wrap}
+.hint{font-size:13px;color:#4c6a63}
+.rec{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.rec img{width:84px;height:84px;object-fit:cover;border-radius:4px;flex:none;background:#000}
+.rec b{font-size:22px;font-variant-numeric:tabular-nums}
+.rec div{min-width:0;font-size:14px}
+.chg{color:var(--pink);font-size:13px;margin-left:6px}
+.bar{display:flex;gap:8px;justify-content:space-between;align-items:center}
+@media (prefers-reduced-motion:no-preference){.res{animation:in .25s ease-out}@keyframes in{from{opacity:0}}}
+</style>
+</head>
+<body>
+<header>
+  <h1>小口カウント<i></i></h1>
+  <nav role="tablist">
+    <button role="tab" data-t="cap" aria-selected="true">撮影</button>
+    <button role="tab" data-t="list" aria-selected="false">記録</button>
+    <button role="tab" data-t="set" aria-selected="false">設定</button>
+  </nav>
+</header>
+<main>
+
+<section id="cap">
+  <label class="p" for="file">写真を撮る・選ぶ</label>
+  <input id="file" type="file" accept="image/*" capture="environment" hidden>
+  <img id="prev" alt="撮影した小口の写真">
+  <button id="go" class="p" style="margin-top:12px" disabled>AIで数える</button>
+  <div id="err" class="msg" role="alert"></div>
+
+  <div id="res" class="res" hidden>
+    <div class="hint">AIの数えた枚数</div>
+    <div class="big"><span id="ai">0</span><small>枚</small></div>
+    <p id="note"></p>
+    <label for="cnt">確定枚数（目で確認して修正できます）</label>
+    <input id="cnt" type="number" inputmode="numeric" min="0">
+    <label for="slip">送り伝票番号</label>
+    <input id="slip" inputmode="text" autocomplete="off">
+    <label for="proc">工程</label>
+    <input id="proc" autocomplete="off">
+    <label for="worker">作業者</label>
+    <input id="worker" autocomplete="off">
+    <label for="memo">メモ</label>
+    <input id="memo" autocomplete="off">
+    <button id="save" class="p" style="margin-top:16px">記録する</button>
+  </div>
+</section>
+
+<section id="list" hidden>
+  <div class="bar"><span id="total" class="hint"></span><button id="csv" class="s">CSVで保存</button></div>
+  <div id="recs"></div>
+</section>
+
+<section id="set" hidden>
+  <label for="key">Gemini APIキー</label>
+  <input id="key" type="password" autocomplete="off" placeholder="Google AI Studioで発行したキー">
+  <p class="hint">キーはこの端末のブラウザにだけ保存されます。ページのソースには含まれません。</p>
+  <label for="model">モデル名</label>
+  <input id="model" list="models">
+  <datalist id="models">
+    <option value="gemini-2.5-flash-lite"><option value="gemini-2.5-flash"><option value="gemini-3-flash-preview">
+  </datalist>
+  <p class="hint">無料枠で使えるモデルは変わることがあります。エラーが出たら、AI Studioの料金ページで確認して入力し直してください。精度はモデルごとに試して比べてください。</p>
+  <label for="max">送信する画像の長辺（px）</label>
+  <input id="max" type="number" inputmode="numeric" min="600" max="4000" step="100">
+  <button id="sv" class="p" style="margin-top:16px">設定を保存</button>
+  <p id="svmsg" class="hint"></p>
+  <p class="hint">記録はこの端末内にだけ保存されます。ブラウザのデータを消す、または別の端末を使うと見えなくなるため、定期的にCSVで保存してください。</p>
+</section>
+
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}};
+const PROMPT="この写真は、積み重ねたガラス板を側面（小口）から撮影したものです。ガラス板の枚数を数えてください。ピンク色の線や点は作業者の目印で、ガラスではありません。隠れていて数えられない部分は推測で補わず、見える範囲で数えてください。count に枚数、note に数えにくかった点などを日本語で一言で入れてください。";
+
+/* tabs */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  ['cap','list','set'].forEach(id=>$('#'+id).hidden=id!==b.dataset.t);
+  if(b.dataset.t==='list')render();
+});
+
+/* storage */
+const dbp=new Promise((ok,ng)=>{const r=indexedDB.open('glass',1);r.onupgradeneeded=()=>r.result.createObjectStore('rec',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)});
+const tx=async(m,f)=>{const db=await dbp;return new Promise((ok,ng)=>{const t=db.transaction('rec',m);const q=f(t.objectStore('rec'));t.oncomplete=()=>ok(q&&q.result);t.onerror=()=>ng(t.error)})};
+
+/* settings */
+$('#key').value=LS('key')||'';
+$('#model').value=LS('model')||'gemini-2.5-flash-lite';
+$('#max').value=LS('max')||'2000';
+['proc','worker'].forEach(id=>$('#'+id).value=LS(id)||'');
+$('#sv').onclick=()=>{LS('key',$('#key').value.trim());LS('model',$('#model').value.trim());LS('max',$('#max').value);$('#svmsg').textContent='保存しました。'};
+
+/* image */
+let blob=null;
+const shrink=async(file,max)=>{
+  const bm=await createImageBitmap(file,{imageOrientation:'from-image'});
+  const k=Math.min(1,max/Math.max(bm.width,bm.height));
+  const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);
+  c.getContext('2d').drawImage(bm,0,0,c.width,c.height);
+  return new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+};
+$('#file').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  $('#err').textContent='';$('#res').hidden=true;
+  try{blob=await shrink(f,+LS('max')||2000)}catch(x){$('#err').textContent='写真を読み込めませんでした。別の写真で試してください。';return}
+  $('#prev').src=URL.createObjectURL(blob);$('#prev').style.display='block';$('#go').disabled=false;
+};
+const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)});
+
+/* count */
+$('#go').onclick=async()=>{
+  const key=LS('key'),model=LS('model')||'gemini-2.5-flash-lite';
+  if(!key){$('#err').textContent='先に「設定」でAPIキーを入力してください。';return}
+  $('#go').disabled=true;$('#go').textContent='数えています…';$('#err').textContent='';
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+      method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+      body:JSON.stringify({contents:[{parts:[{text:PROMPT},{inline_data:{mime_type:'image/jpeg',data:await b64(blob)}}]}],
+        generationConfig:{temperature:0,responseMimeType:'application/json',
+          responseSchema:{type:'OBJECT',properties:{count:{type:'INTEGER'},note:{type:'STRING'}},required:['count','note']}}})});
+    const j=await r.json();
+    if(!r.ok){const m=(j.error&&j.error.message)||'';throw new Error(r.status===429?'無料枠の回数制限に達しました。しばらく待ってからやり直してください。':r.status===400||r.status===403?'APIキーまたはモデル名を確認してください。\n'+m:'AIとの通信に失敗しました（'+r.status+'）。\n'+m)}
+    const o=JSON.parse(j.candidates[0].content.parts[0].text);
+    $('#ai').textContent=o.count;$('#cnt').value=o.count;$('#note').textContent=o.note||'';
+    $('#res').hidden=false;$('#res').scrollIntoView({behavior:'smooth'});
+  }catch(x){$('#err').textContent=x.message.includes('Failed to fetch')?'通信できませんでした。電波状況を確認してください。':x.message}
+  $('#go').disabled=false;$('#go').textContent='AIで数える';
+};
+
+/* save */
+$('#save').onclick=async()=>{
+  const n=parseInt($('#cnt').value,10);
+  if(isNaN(n)){$('#err').textContent='確定枚数を入力してください。';return}
+  const g=id=>$('#'+id).value.trim();
+  LS('proc',g('proc'));LS('worker',g('worker'));
+  await tx('readwrite',s=>s.put({id:Date.now(),slip:g('slip'),proc:g('proc'),worker:g('worker'),memo:g('memo'),ai:+$('#ai').textContent,count:n,photo:blob}));
+  $('#res').hidden=true;$('#prev').style.display='none';$('#go').disabled=true;$('#file').value='';$('#slip').value='';$('#memo').value='';blob=null;
+  $('#err').style.color='var(--glass)';$('#err').textContent='記録しました（'+n+'枚）。';setTimeout(()=>{$('#err').textContent='';$('#err').style.color=''},3000);
+};
+
+/* list */
+const fmt=id=>{const d=new Date(id),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function render(){
+  const all=(await tx('readonly',s=>s.getAll())).sort((a,b)=>b.id-a.id);
+  $('#total').textContent=all.length?all.length+'件':'';
+  $('#recs').innerHTML=all.length?'':'<p class="hint">まだ記録がありません。「撮影」から最初の1件を記録しましょう。</p>';
+  all.forEach(r=>{
+    const u=URL.createObjectURL(r.photo),el=document.createElement('div');el.className='rec';
+    el.innerHTML=`<a href="${u}" target="_blank"><img src="${u}" alt="記録の写真"></a><div><b>${r.count}枚</b>${r.ai!==r.count?`<span class="chg">AI ${r.ai}→修正</span>`:''}<br>伝票 ${esc(r.slip||'-')} / ${esc(r.proc||'-')} / ${esc(r.worker||'-')}<br><span class="hint">${fmt(r.id)}${r.memo?' / '+esc(r.memo):''}</span><br><button class="s" style="padding:2px 10px;margin-top:4px">削除</button></div>`;
+    el.querySelector('button').onclick=async()=>{if(confirm('この記録を削除しますか？')){await tx('readwrite',s=>s.delete(r.id));render()}};
+    $('#recs').append(el);
+  });
+}
+$('#csv').onclick=async()=>{
+  const all=(await tx('readonly',s=>s.getAll())).sort((a,b)=>a.id-b.id);
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const rows=[['日時','伝票番号','工程','作業者','AI枚数','確定枚数','メモ'],...all.map(r=>[fmt(r.id),r.slip,r.proc,r.worker,r.ai,r.count,r.memo])];
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n')],{type:'text/csv'}));
+  a.download='glass_count_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+};
+</script>
+</body>
+</html>
